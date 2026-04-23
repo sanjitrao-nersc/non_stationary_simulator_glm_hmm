@@ -10,22 +10,17 @@
 \usepackage{xcolor}
 \usepackage{float}
 \usepackage{placeins}
+\usepackage{caption}
 
-\title{A Sparse Poisson GLM-HMM for Simultaneous Neural Connectivity and Brain-State Recovery\\[0.5em]
-\normalsize Full Mathematical Description and Implementation Reference\\
-(\texttt{ashwood\_ns\_8.py} / \texttt{ashwood\_ns\_9.py} / \texttt{PlotterAshwood.py})}
+\captionsetup{font=small, labelfont=bf, width=0.95\textwidth}
+
+\title{A Sparse Poisson GLM-HMM for Simultaneous Neural Connectivity\\and Brain-State Recovery\\[0.5em]
+\normalsize Full Mathematical Description and Implementation Reference}
 \author{Sanjit Rao}
-\date{March 2026}
+\date{April 2026}
 
 \begin{document}
 \maketitle
-
-% Fallback figure macro
-\newcommand{\IncludeFigureFallback}[3]{%
-\IfFileExists{#1}{\includegraphics[width=#3]{#1}}{%
-\IfFileExists{#2}{\includegraphics[width=#3]{#2}}{%
-\fbox{\parbox[c][0.20\textheight][c]{0.9\textwidth}{\centering Missing figure:\\\texttt{#1}}}%
-}}}
 
 % ============================================================
 \section*{Abstract}
@@ -42,10 +37,16 @@ The \textbf{GLM-HMM model} described here addresses both challenges simultaneous
 It models spike counts as a \textbf{Poisson GLM-HMM}: a generative model in which
 each time bin is assigned to one of $K$ discrete brain states, and within each state
 the spike rate is a log-linear function of the previous bin's population activity via
-a shared connectivity matrix $A$.  Two structural constraints derived from biology
+a shared connectivity matrix $A$.  Three structural constraints derived from biology
 are enforced throughout training: \textbf{Dale's law} (each neuron is either
-purely excitatory or purely inhibitory) and \textbf{spectral stability}
-(spectral radius $\rho(A) < 1$).
+purely excitatory or purely inhibitory), \textbf{spectral stability}
+(spectral radius $\rho(A) < 1$), and \textbf{self-inhibition}
+($A_{ii} \le -0.05$ for all neurons).
+
+The model has been evaluated on two simulated 100-neuron networks with $T=200{,}000$
+time bins ($\Delta t = 0.01$\,s).  On $K=2$ states it achieves $F_1 = 0.995$
+(TP=1338, FP=13, FN=1) and state accuracy $= 0.992$.  On $K=3$ states it achieves
+$F_1 = 0.997$ (TP=1358, FP=9, FN=0) and state accuracy $= 0.988$.
 
 % ============================================================
 \section*{Summary}
@@ -63,27 +64,31 @@ The GLM-HMM model recovers two quantities simultaneously from neural spike-count
         of every neuron independently of the shared connectivity.
 \end{enumerate}
 
-Training uses the \textbf{Expectation-Maximisation (EM)} algorithm.  Each run
-jointly learns the sparse connectivity structure and the HMM parameters over
-25 EM iterations.
+Training uses the \textbf{Expectation-Maximisation (EM)} algorithm with \textbf{Adam}
+optimisation and \textbf{gradient clipping} at norm 1.0.  Each run jointly learns
+the sparse connectivity structure and the HMM parameters over 25 EM iterations.
 
-The model has been evaluated on two simulated 100-neuron networks:
+Performance summary across evaluated datasets:
 
-\paragraph{K=2 (two brain states, \texttt{daleN100\_b1036a}).}
-$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx10{,}000$ bins, $\Delta t=0.01$\,s.
-\begin{itemize}[leftmargin=*,noitemsep]
-  \item F1 $= 0.841$ ($\mathrm{TP}=1195$, $\mathrm{FP}=271$, $\mathrm{FN}=181$).
-  \item Inhibitory block: F1 $= 0.998$.  Excitatory block: F1 $= 0.802$.
-  \item State accuracy $= 0.992$,  weight correlation $R = 0.942$.
-\end{itemize}
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Metric & $K=2$ & $K=3$ \\
+\midrule
+F1 (overall)         & 0.995 & 0.997 \\
+TP / FP / FN         & 1338 / 13 / 1 & 1358 / 9 / 0 \\
+Excitatory F1        & 0.995 & 0.997 \\
+Inhibitory F1        & 0.995 & 0.994 \\
+Weight $R$ / slope   & 0.990 / 1.000 & 0.988 / 0.956 \\
+State accuracy       & 0.992 & 0.988 \\
+Bias $R$ (per state) & $\ge 0.999$ & $\ge 0.999$ \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\paragraph{K=3 (three brain states, \texttt{daleN100\_f7d754\_ce2202}).}
-$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx20{,}000$ bins, $\Delta t=0.01$\,s.
-\begin{itemize}[leftmargin=*,noitemsep]
-  \item F1 $= 0.997$ ($\mathrm{TP}=1358$, $\mathrm{FP}=9$, $\mathrm{FN}=0$).
-  \item Inhibitory block: F1 $= 0.994$.  Excitatory block: F1 $= 0.997$.
-  \item State accuracy $= 0.988$,  weight correlation $R = 0.988$, slope $= 0.956$.
-\end{itemize}
+Both datasets achieve near-perfect connectivity recovery ($F_1 > 0.99$).
+$K=2$ achieves slope $= 1.000$; $K=3$ has slightly lower slope ($0.956$) but zero
+false negatives.
 
 % ============================================================
 \section{Data and Preprocessing}
@@ -93,9 +98,9 @@ $N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx20{,}000$ bins, $\Delta t
 \begin{equation}
   Y\in\mathbb{R}_{\ge 0}^{T\times N},\qquad N=100.
 \end{equation}
-$Y_{t,n}$ is the spike count of neuron $n$ in time bin $t$.  Bins are $\Delta t = 0.01$\,s wide.
-$K$ is the number of hidden brain states; $K=2$ for dataset \texttt{daleN100\_b1036a}
-and $K=3$ for \texttt{daleN100\_15b40d\_0e5b13}.
+$Y_{t,n}$ is the spike count of neuron $n$ in time bin $t$.  Bins are
+$\Delta t = 0.01$\,s wide.  $K$ is the number of hidden brain states; $K=2$ or
+$K=3$ depending on the dataset.  Both datasets use $T = 200{,}000$ bins.
 
 \subsection{Lagged design matrix}
 \begin{equation}
@@ -105,10 +110,10 @@ and $K=3$ for \texttt{daleN100\_15b40d\_0e5b13}.
     Y_{t-1},    & t \ge 2.
   \end{cases}
 \end{equation}
-$X_t\in\mathbb{R}^N$ contains spike counts from the immediately preceding bin.  With
-$L>1$ lags the design matrix is the horizontal concatenation
-$X_t = [Y_{t-1},\,Y_{t-2},\,\ldots,\,Y_{t-L}]$ and $A$ grows to shape $N\times LN$.
-Current runs use $L=1$.
+$X_t\in\mathbb{R}^N$ contains spike counts from the immediately preceding bin.
+Current runs use $L=1$ lag; with $L>1$ lags the design matrix is the horizontal
+concatenation $X_t = [Y_{t-1},\,Y_{t-2},\,\ldots,\,Y_{t-L}]$ and $A$ grows to
+shape $N\times LN$.
 
 % ============================================================
 \section{Model Parameters}
@@ -163,18 +168,12 @@ This is the Poisson log-likelihood up to the constant $\log(Y_{t,n}!)$.
 \section{Warm-Start Initialisation}
 % ============================================================
 
-Cold-starting EM from random weights leads to slow convergence and poor local optima
-in practice.  Two warm-start procedures are used.
-
 \subsection{Connectivity warm start (ridge regression)}
-\label{sec:warmstart_A}
 
-\paragraph{Why necessary.}
 Without a warm start, $A$ is initialised near zero and the gradient signal from the
-Poisson NLL is very weak (near-zero mean rate implies near-zero gradient magnitude).
-A ridge regression solution provides a data-informed starting point that is close
-enough to the true $A$ that the EM optimizer can refine it rather than search from
-scratch.
+Poisson NLL is very weak.  A ridge regression solution provides a data-informed
+starting point close enough to the true $A$ that the EM optimizer can refine it
+rather than search from scratch.
 
 \begin{equation}
   A_{\mathrm{ls}} =
@@ -196,14 +195,12 @@ $[-0.5, 0.5]$, and the matrix is transposed into (post, pre) convention.
 Dale's law and the inhibitory-diagonal constraint are enforced immediately after.
 
 \subsection{Bias warm start}
-\label{sec:warmstart_B}
 
-\paragraph{Why necessary.}
-If all $B_k$ are initialised identically, the forward-backward algorithm assigns
-equal responsibility $\gamma_{t,k}=1/K$ to every state at every time step.  This is
-a saddle point of the EM objective: the E-step produces uniform responsibilities,
-the M-step has no signal to differentiate states, and the model never escapes the
-degenerate solution.  Small random perturbations break this symmetry.
+If all $B_k$ are initialised identically, the forward-backward algorithm assigns equal
+responsibility $\gamma_{t,k}=1/K$ to every state at every time step.  This is a saddle
+point of the EM objective: the E-step produces uniform responsibilities, the M-step has
+no signal to differentiate states, and the model never escapes the degenerate solution.
+Small random perturbations break this symmetry.
 
 \begin{equation}
   B_{k,n} = \log\!\left(\max\!\left(\frac{1}{T}\sum_{t=1}^T Y_{t,n},\;10^{-4}\right)\right)
@@ -214,13 +211,10 @@ degenerate solution.  Small random perturbations break this symmetry.
 \end{equation}
 
 \subsection{HMM initialisation}
-\label{sec:warmstart_HMM}
 
-\paragraph{Why necessary.}
-A uniform transition matrix $P_{ij}=1/K$ gives equal probability to self-transitions
-and cross-transitions.  Brain states are known to be persistent (dwell times of seconds
-to minutes), so initialising with high self-transition probability biases the model
-toward physiologically plausible state durations, reducing the risk of rapid
+Brain states are known to be persistent (dwell times of seconds to minutes), so
+initialising with high self-transition probability biases the model toward
+physiologically plausible state durations and reduces the risk of rapid
 state-switching spurious solutions.
 
 For $K=2$:
@@ -234,20 +228,15 @@ For $K=3$:
   \pi = [1/3,\;1/3,\;1/3],\qquad
   P = \begin{bmatrix}0.93 & 0.035 & 0.035\\0.035 & 0.93 & 0.035\\0.035 & 0.035 & 0.93\end{bmatrix}.
 \end{equation}
-The mild asymmetry in $\pi$ for $K=2$ and the high self-transition probability in
-both cases reflect the prior that brain states are persistent.
 
 % ============================================================
 \section{E-step: Forward-Backward Algorithm}
 % ============================================================
 
-All recursions are computed in \textbf{log-space}.
-
-\paragraph{Why log-space.}
-The forward variable $\alpha_{t,k}$ is a product of $t$ probabilities, each $\le 1$.
-For $T=10{,}000$ bins this product underflows to machine zero in standard floating point.
-Log-space arithmetic replaces products with sums and recovers numerical stability
-at the cost of $O(K^2)$ logsumexp operations per time step.
+All recursions are computed in \textbf{log-space} to prevent underflow over
+$T=200{,}000$ time bins.  The forward variable $\alpha_{t,k}$ is a product of $t$
+probabilities each $\le 1$; log-space arithmetic replaces products with sums and
+recovers numerical stability at the cost of $O(K^2)$ logsumexp operations per step.
 
 \subsection{Forward pass}
 \begin{align}
@@ -256,6 +245,8 @@ at the cost of $O(K^2)$ logsumexp operations per time step.
     + \log\sum_{j=1}^K \exp\!\bigl(\log\alpha_{t-1,j}+\log P_{jk}\bigr),
     \quad t\ge 2.
 \end{align}
+$\alpha_{t,k}$ is the joint probability of all observations $y_1,\ldots,y_t$ and
+being in state $k$ at time $t$.
 
 \subsection{Backward pass}
 \begin{align}
@@ -264,6 +255,7 @@ at the cost of $O(K^2)$ logsumexp operations per time step.
     \exp\!\bigl(\log P_{jk}+\ell_{t+1,k}+\log\beta_{t+1,k}\bigr),
     \quad t\le T-1.
 \end{align}
+$\beta_{t,k}$ is the probability of future observations given state $k$ at time $t$.
 
 \subsection{State posteriors (responsibilities)}
 \begin{equation}
@@ -272,6 +264,8 @@ at the cost of $O(K^2)$ logsumexp operations per time step.
   \qquad
   \gamma_{t,k} = \exp(\log\gamma_{t,k}).
 \end{equation}
+$\gamma_{t,k}$ is the posterior probability (responsibility) that state $k$ is active
+at time bin $t$.
 
 \subsection{Pairwise posteriors (for transition update)}
 \begin{equation}
@@ -281,9 +275,10 @@ at the cost of $O(K^2)$ logsumexp operations per time step.
 \begin{equation}
   \Xi_{ij} = \sum_{t=1}^{T-1}\xi_t(i,j).
 \end{equation}
+$\Xi_{ij}$ is the expected number of transitions from state $i$ to state $j$.
 
 % ============================================================
-\section{M-step: Phase 1 (Sparse Structure Learning)}
+\section{M-step: Sparse Structure Learning}
 % ============================================================
 
 \subsection{Loss function and optimiser}
@@ -297,46 +292,54 @@ responsibilities, with L2 weight decay:
   +\;\frac{\lambda_2}{2}\|A\|_F^2.
 \end{equation}
 Optimisation uses \textbf{Adam} with \textbf{gradient clipping} at norm 1.0.
-
-\paragraph{Why gradient clipping.}
-Early in training, $\rho(A)$ can be large and the recurrent dynamics can amplify
-gradients through the emission model.  Unbounded gradients cause the optimizer to
-overshoot and destabilise training.  Clipping to norm 1.0 caps the step size without
-discarding gradient direction information.
+Gradient clipping is critical early in training: when $\rho(A)$ is large, the
+recurrent dynamics amplify gradients through the emission model, causing the
+optimizer to overshoot and destabilise training.  Clipping to norm 1.0 caps the
+step size without discarding gradient direction information.
 
 \subsection{Proximal soft-threshold (L1 sparsity)}
-\label{sec:proximal}
 
-\paragraph{Why proximal rather than L1-in-loss.}
 Including $\lambda_1\|A\|_1$ directly in the differentiable loss introduces a
 non-zero subgradient at $A_{ij}=0$, which prevents weights from reaching exact zero
 and produces a dense matrix.  The proximal operator applied \emph{after} the gradient
 step produces exactly sparse solutions:
-
 \begin{equation}
   A_{ij} \leftarrow
   \mathrm{sign}(A_{ij})\max\!\bigl(|A_{ij}|-\tau_{\mathrm{block}(i)},\;0\bigr),
   \quad i\neq j,
 \end{equation}
 where $\tau_{\mathrm{exc}}$ applies to excitatory rows and $\tau_{\mathrm{inh}}$ to
-inhibitory rows.
+inhibitory rows.  Separate thresholds allow independent control of the FP/FN balance
+for each block, since the two blocks have different edge densities and weight scales.
 
-\paragraph{Why separate thresholds per block.}
-The excitatory and inhibitory blocks have different edge densities, weight scales, and
-signal-to-noise ratios.  A single global threshold simultaneously over-prunes one block
-and under-prunes the other.  Separate thresholds allow independent control of FP/FN
-balance for each block.
+\subsection{Adaptive $\tau$ controller}
+
+A fixed proximal threshold $\tau$ cannot adapt to the evolving weight distribution
+during training.  An online feedback controller that increases $\tau$ when
+$\mathrm{FP} > \mathrm{FN}$ and decreases it when $\mathrm{FN} > \mathrm{FP}$
+maintains the FP/FN balance automatically without requiring per-dataset manual tuning.
+
+After the first $25\%$ of Phase~1 epochs (warm-up period):
+\begin{equation}
+  e_{\mathrm{block}} = \frac{FP_{\mathrm{block}}-FN_{\mathrm{block}}}
+    {\max\!\bigl(1,\;TP_{\mathrm{block}}+FP_{\mathrm{block}}+FN_{\mathrm{block}}\bigr)},
+\end{equation}
+\begin{equation}
+  \tau_{\mathrm{block}} \leftarrow \tau_{\mathrm{block}}\cdot
+    \exp\!\bigl(g_\tau\cdot e_{\mathrm{block}}\bigr),
+  \qquad g_\tau = 0.05.
+\end{equation}
+Thresholds are clamped to
+$[\tau_{\min},\tau_{\max}] = [0.2\,\tau_0,\;6.0\,\tau_0]$,
+where $\tau_0=\lambda_1\cdot\alpha_{\mathrm{prox}}$ is the initial threshold.
+A multiplicative (rather than additive) update is used because $\tau$ spans several
+orders of magnitude across hyperparameter settings.
 
 \subsection{Dale's law projection}
-\label{sec:dale}
 
-\paragraph{Why necessary.}
 Gradient descent does not respect sign constraints.  Without projection, excitatory
-neuron weights can become negative (inhibitory) and vice versa, violating the biological
-constraint that each neuron releases only one type of neurotransmitter.  Dale's law also
-provides a strong structural prior that eliminates an entire class of false positive
-edges: an inhibitory neuron cannot produce a positive lag-1 correlation, so any positive
-off-diagonal entry in an inhibitory row is guaranteed to be a false positive.
+neuron weights can become negative and vice versa, violating the biological constraint
+that each neuron releases only one type of neurotransmitter.
 
 \begin{align}
   A_{ij} &\leftarrow \max(A_{ij},\;0), \quad i < n_{\mathrm{exc}},\;i\neq j,\\
@@ -344,48 +347,18 @@ off-diagonal entry in an inhibitory row is guaranteed to be a false positive.
 \end{align}
 
 \subsection{Inhibitory diagonal constraint}
-\label{sec:diagconstraint}
-
-\paragraph{Why necessary.}
-The diagonal of $A$ encodes self-coupling.  Without constraint, Adam can set
-$A_{ii} > 0$ (self-excitation), which tends to cause runaway firing rates and
-numerical instability.  A minimum magnitude of self-inhibition ensures stable
-single-neuron dynamics and prevents degenerate solutions where a neuron drives itself
-into saturation.
 
 \begin{equation}
   A_{ii} \leftarrow -\max(|A_{ii}|,\;d_{\min}),\qquad d_{\min}=0.05.
 \end{equation}
+This ensures self-coupling is always inhibitory with minimum magnitude, preventing
+runaway self-excitation and numerical instability.
 
 \subsection{Spectral stability projection}
-\label{sec:spectral}
 
-\paragraph{Why necessary.}
-The recurrent dynamics $\eta = X A^\top + B$ are stable only if $\rho(A) < 1$.
-When $\rho(A) \ge 1$, small perturbations grow exponentially through the network,
-the predicted rates $\mu$ diverge, and the loss becomes infinite.  A hard spectral
-radius constraint prevents this.
-
-\paragraph{Why every 3 epochs (not every epoch).}
-Applying spectral rescaling every epoch creates a continuous competition between Adam
-(pushing weights upward toward true magnitudes) and the rescaler (compressing all
-weights downward).  The system reaches an equilibrium where weights are permanently
-suppressed to a fraction of their true values --- empirically ~$4\times$ too small
-with every-epoch rescaling, causing weight correlation slope to collapse to $\sim0.2$
-and, critically, causing state collapse (accuracy $< 0.6$) because the deflated $A$
-can no longer differentiate emission likelihoods between states.
-
-Applying rescaling every 3 epochs gives Adam 3 epochs of unconstrained gradient
-ascent to recover correct magnitudes before the constraint is re-applied.  The
-rescaler then makes a small correction (multiplier $\approx 0.90/0.92 = 0.978$)
-rather than a large compression.
-
-\paragraph{Why target 0.90 rather than 0.919.}
-A target of 0.919 (just below the threshold of 0.92) means the window between
-rescaling events is very narrow --- Adam can only push $\rho$ from 0.919 to 0.92
-before the next correction fires, giving very little room for weight growth.
-A target of 0.90 creates a buffer zone of 0.02 in spectral radius, allowing weights
-to grow more between events and settle closer to their true magnitudes.
+The recurrent dynamics are stable only if $\rho(A) < 1$.  When $\rho(A) \ge 1$,
+small perturbations grow exponentially, predicted rates diverge, and the loss
+becomes infinite.
 
 \begin{equation}
   \rho(A) = \max_{\lambda\in\mathrm{eig}(A)}|\lambda|.
@@ -395,80 +368,62 @@ to grow more between events and settle closer to their true magnitudes.
   \text{if }\rho(A)\ge 0.92\text{ and global\_epoch} \bmod 3 = 0.
 \end{equation}
 
-\subsection{Projection cadence}
-\label{sec:cadence}
+Spectral rescaling is applied every 3 epochs (not every epoch).  Applying it every
+epoch creates a continuous competition between Adam (pushing weights toward true
+magnitudes) and the rescaler (compressing them downward), producing permanent weight
+deflation and state collapse.  Applying every 3 epochs gives Adam a window of
+unconstrained gradient ascent to recover correct magnitudes before the constraint
+fires again.
 
-\paragraph{Why a two-phase cadence.}
-The proximal operator and Dale's law projection are \emph{not} applied every epoch.
-Early in training, weights need freedom to grow in magnitude before support
-stabilises --- applying the proximal operator every epoch prunes edges before
-they have had enough gradient signal to distinguish true edges from noise.
-Late in training, the magnitude landscape has stabilised and finer-grained
-support cleanup is beneficial.
+The rescaling target is $0.90$ (not $0.919$, the threshold).  Targeting $0.919$
+leaves almost no buffer: Adam can only push $\rho$ from $0.919$ to $0.92$ before the
+next rescaling fires.  A target of $0.90$ provides a buffer zone of $0.02$ in
+spectral radius, allowing weights to settle closer to their true magnitudes.
+
+A single post-training spectral stabilisation step uses a tighter target of $0.919$.
+
+\subsection{Two-phase projection cadence}
+
+The proximal operator and Dale's law projection are not applied every epoch.
+Early in training, weights need freedom to grow before support stabilises --- applying
+the proximal operator every epoch prunes edges before they have had enough gradient
+signal to distinguish true edges from noise.
 
 \begin{equation}
-  q = \begin{cases} q_{\mathrm{early}} = 8 & \text{if } \mathrm{progress} < 65\%,\\
+  q = \begin{cases} q_{\mathrm{early}} = 8 & \text{if progress} < 65\%,\\
                     q_{\mathrm{late}} = 2  & \text{otherwise.} \end{cases}
 \end{equation}
 Proximal and Dale projections are applied every $q$ epochs.
 Spectral rescaling uses a separate fixed cadence of every 3 epochs throughout.
 
-\subsection{Adaptive tau controller}
-\label{sec:tau}
+% ============================================================
+\section{HMM Parameter Updates (M-step)}
+% ============================================================
 
-\paragraph{Why necessary.}
-A fixed proximal threshold $\tau$ cannot adapt to the evolving weight distribution
-during training.  If $\tau$ is too large, true edges are pruned (high FN); if too
-small, noise edges survive (high FP).  An online feedback controller that increases
-$\tau$ when FP~$>$~FN and decreases it when FN~$>$~FP maintains the balance
-automatically without requiring per-dataset manual tuning.
-
-After the first $25\%$ of Phase 1 epochs (warm-up period while the weight
-distribution is still changing rapidly):
-\begin{equation}
-  e_{\mathrm{block}} = \frac{FP_{\mathrm{block}}-FN_{\mathrm{block}}}
-    {\max\!\bigl(1,\;TP_{\mathrm{block}}+FP_{\mathrm{block}}+FN_{\mathrm{block}}\bigr)},
-\end{equation}
-\begin{equation}
-  \tau_{\mathrm{block}} \leftarrow \tau_{\mathrm{block}}\cdot
-    \exp\!\bigl(g_\tau\cdot e_{\mathrm{block}}\bigr),
-\end{equation}
-where $g_\tau=0.05$.  Thresholds are clamped to
-$[\tau_{\min},\tau_{\max}] = [0.2\,\tau_0,\;6.0\,\tau_0]$,
-where $\tau_0=\lambda_1\cdot\alpha_{\mathrm{prox}}$ is the initial threshold.
-
-\paragraph{Why a multiplicative (not additive) update.}
-$\tau$ spans several orders of magnitude across hyperparameter settings.  A
-multiplicative update scales correctly regardless of the absolute magnitude of $\tau$,
-whereas an additive update with a fixed step size would be too large for small $\tau$
-and too small for large $\tau$.
-
-\subsection{HMM parameter updates}
+\subsection{Initial state distribution}
 \begin{equation}
   \pi_k \leftarrow \frac{\gamma_{1,k}+\alpha_\pi}{\sum_j(\gamma_{1,j}+\alpha_\pi)},
   \qquad \alpha_\pi=10^{-2}.
 \end{equation}
+
+\subsection{Transition matrix}
 \begin{equation}
   \tilde P_{ij} = \Xi_{ij}+\epsilon_P+\delta_{ij},
   \qquad
   P_{ij} = \frac{\tilde P_{ij}}{\sum_b\tilde P_{ib}},
   \qquad \epsilon_P=10^{-3}.
 \end{equation}
-
-\paragraph{Why the Kronecker $\delta_{ij}$ self-transition pseudocount.}
-Adding one unit of self-transition pseudo-count to each diagonal entry of
-$\tilde P$ prevents the estimated transition matrix from collapsing to rapid
-state-switching when data are limited.  This acts as a Bayesian prior for
-persistent states and improves numerical conditioning of $P$ when a state is
-rarely visited.
+The Kronecker $\delta_{ij}$ self-transition pseudocount prevents the estimated
+transition matrix from collapsing to rapid state-switching when data are limited,
+acting as a Bayesian prior for persistent states.
 
 % ============================================================
 \section{Final Evaluation}
 % ============================================================
 
 \subsection{Adaptive threshold search per block}
-After training, the optimal threshold for each block is found by scanning over
-quantiles of the non-zero inferred weights:
+After training, the optimal binarisation threshold for each block is found by scanning
+over quantiles of the non-zero inferred weights:
 \begin{equation}
   \mathcal{T}_{\mathrm{block}} =
   \left\{q_p\!\left(|\hat A_{\mathrm{block}}|_{>10^{-12}}\right):
@@ -483,180 +438,353 @@ quantiles of the non-zero inferred weights:
 In addition to F1 (edge detection), weight recovery is measured by the
 Pearson correlation $R$ and the linear regression slope between true and inferred
 off-diagonal weights.  A well-calibrated model has slope $\approx 1$; slope $\ll 1$
-indicates systematic weight deflation (typically caused by over-aggressive
-spectral rescaling).
+indicates systematic weight deflation, typically caused by over-aggressive spectral
+rescaling.
 
 % ============================================================
-\section{Results: K=2 (\texttt{ddaleN100\_bc2f18\_8ea3cb})}
+\section{Results: $K=2$ (\texttt{daleN100\_bc2f18\_8ea3cb})}
 % ============================================================
 
-\subsection{Ground truth vs recovered connectivity}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_bc2f18_8ea3cb_ground_truth_vs_recovered_inference.png}{ashwood_ns_7_ground_truth_connectivity.png}{1.0\textwidth}
-  \caption{K=2: Side-by-side comparison of ground-truth $A_{\mathrm{true}}$ (left) and
-    recovered $\hat{A}$ (right), both in original neuron index order.
-    Rows/columns 0--79 are excitatory (red); rows/columns 80--99 are inhibitory (blue).
-    Dashed line marks the exc/inh boundary at index~80.
-    $\mathrm{TP}=1195$, $\mathrm{FP}=271$, $\mathrm{FN}=181$,
-    $F_1=0.841$, $R=0.942$.}
-  \label{fig:truth_k2}
-\end{figure}
+\subsection{Ground-truth vs.\ recovered connectivity}
 
-\subsection{Training convergence}
 \begin{figure}[H]
   \centering
-  \IncludeFigureFallback{daleN100_bc2f18_8ea3cb_training_monitor_inference.png}{PRISM_training_monitordaleN100_bc2f18_8ea3cb_inference.png}{1.0\textwidth}
-  \caption{K=2: Training monitor (smoothed trends).  Left to right: E-step NLL per EM
-    iteration; spectral radius trajectory (vertical dashed line = Phase~2 boundary);
-    nonzero edge count and adaptive $\tau$ schedules; M-step Poisson NLL
-    and off-diagonal L1 norm.}
-  \label{fig:monitor_k2}
-\end{figure}
-
-\subsection{State recovery}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_bc2f18_8ea3cb_state_prediction_1000s.png}{daleN100_b1036a_state_prediction_1000s.png}{1.0\textwidth}
-  \caption{K=2: State recovery.  Top row: mean state occupancy, per-state accuracy,
-    posterior confidence histogram.  Bottom: true state $S_t$ (black) vs
-    inferred $\hat{S}_t = \arg\max_k\gamma_{t,k}$ (orange).
-    State accuracy $= 0.992$.}
-  \label{fig:states_k2}
-\end{figure}
-
-\subsection{Connectivity and parameter recovery}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_bc2f18_8ea3cb_connectivity_validation_inference.png}{connectivity_validation_inference_daleN100_bc2f18_8ea3cb.png}{1.0\textwidth}
-  \caption{K=2: Connectivity validation.  Top row: TP/FP/FN counts with per-block
-    precision/recall/F1, edge-prediction confusion map, and off-diagonal weight
-    correlation scatter (R, slope).  Bottom row: state log-baseline bias scatter
-    for each state (state-permutation aligned).
-    $F_1=0.841$, $R=0.942$, inh F1\,$=0.998$, exc F1\,$=0.802$.}
-  \label{fig:connectivity_k2}
+  \includegraphics[width=\textwidth]{figures/k2_connectivity_matrix.jpg}
+  \caption{\textbf{Ground-truth vs.\ recovered connectivity matrix ($K=2$).}
+    Both panels display the full $100\times100$ synaptic weight matrix $A$, with
+    postsynaptic neuron index on the $y$-axis and presynaptic neuron index on the
+    $x$-axis.  Warm colours (red) indicate positive (excitatory) weights; cool colours
+    (blue) indicate negative (inhibitory) weights; the colour scale is symmetric about
+    zero.  A horizontal dashed line at index~80 marks the excitatory/inhibitory
+    boundary: rows~0--79 are excitatory neurons (off-diagonal entries $\ge 0$),
+    rows~80--99 are inhibitory neurons (off-diagonal entries $\le 0$).
+    \textbf{Left:} ground-truth matrix $A_{\mathrm{true}}$, which is sparse and
+    Dale-consistent by construction.  The upper band (rows~80--99) shows a dense block
+    of strong negative (blue) weights reflecting the inhibitory neurons' outgoing
+    connections.  The excitatory block (rows~0--79) is visibly sparser with moderate
+    positive weights.  Self-connections on the diagonal are uniformly inhibitory (blue
+    stripe).
+    \textbf{Right:} recovered matrix $\hat{A}$ after training.  The overall sparsity
+    pattern closely matches the ground truth, with the inhibitory block recovered at
+    near-perfect F1 and the excitatory block also well recovered.
+    Edge-detection statistics: TP$=1338$, FP$=13$, FN$=1$, $F_1=0.995$, $R=0.990$.}
+  \label{fig:k2_connectivity}
 \end{figure}
 
 \FloatBarrier
-% ============================================================
-\section{Results: K=3 (\texttt{daleN100\_f7d754\_ce2202})}
-% ============================================================
 
-\subsection{Ground truth vs recovered connectivity}
+\subsection{Connectivity diagnostics}
+
 \begin{figure}[H]
   \centering
-  \IncludeFigureFallback{daleN100_f7d754_ce2202_ground_truth_vs_recovered_inference.png}{daleN100_15b40d_0e5b13_ground_truth_vs_recovered_inference.png}{1.0\textwidth}
-  \caption{K=3: Side-by-side comparison of ground-truth $A_{\mathrm{true}}$ (left) and
-    recovered $\hat{A}$ (right).  The recovered matrix closely matches the ground truth
-    in both support (edge locations) and weight magnitudes.
-    $\mathrm{TP}=1358$, $\mathrm{FP}=9$, $\mathrm{FN}=0$,
-    $F_1=0.997$, $R=0.988$, slope\,$=0.956$.}
-  \label{fig:truth_k3}
-\end{figure}
-
-\subsection{Training convergence}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_f7d754_ce2202_training_monitor_inference.png}{daleN100_15b40d_0e5b13_training_monitor_inference.png}{1.0\textwidth}
-  \caption{K=3: Training monitor.  Left to right: E-step NLL per EM iteration (drops
-    from $3.1\times10^7$ to $1.0\times10^7$ over 25 iterations); spectral radius
-    $\rho(A)$ decaying from $\sim$3.5 to $\sim$0.92 within the first $\sim$100 epochs
-    and remaining stable thereafter; nonzero edge count (stabilises near 4{,}500);
-    M-step Poisson NLL and off-diagonal L1 norm.}
-  \label{fig:monitor_k3}
-\end{figure}
-
-\subsection{State recovery}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_f7d754_ce2202_state_prediction_1000s.png}{daleN100_f7d754_ce2202_state_prediction_999s.png}{1.0\textwidth}
-  \caption{K=3: State recovery.  All three states are recovered with near-equal
-    occupancy ($\sim$0.32, 0.32, 0.35) and per-state accuracy $\ge 0.98$ (State~0:
-    0.99, State~1: 0.98, State~2: 0.99).
-    The inferred state sequence (orange) tracks the true sequence (black) with
-    overall accuracy $= 0.988$.}
-  \label{fig:states_k3}
-\end{figure}
-
-\subsection{Connectivity and parameter recovery}
-\begin{figure}[H]
-  \centering
-  \IncludeFigureFallback{daleN100_f7d754_ce2202_connectivity_validation_inference.png}{daleN100_15b40d_0e5b13_connectivity_validation_inference.png}{1.0\textwidth}
-  \caption{K=3: Connectivity validation.  Top row: TP/FP/FN counts (TP=1358, FP=9, FN=0),
-    confusion map, weight correlation (R=0.988, slope=0.956 --- slope near 1 confirms
-    well-calibrated weight magnitudes).  Bottom row: log-baseline bias scatter for all
-    three states (R $= 0.999$ for each), confirming accurate $B_k$ recovery.
-    $F_1=0.997$, exc F1\,$=0.997$, inh F1\,$=0.994$.}
-  \label{fig:connectivity_k3}
+  \includegraphics[width=\textwidth]{figures/k2_diagnostics.jpg}
+  \caption{\textbf{Connectivity diagnostics ($K=2$).}
+    \textbf{Top-left:} bar chart of edge classification counts showing 1338 true
+    positives, 13 false positives, and 1 false negative, with inset summary statistics:
+    precision$=0.990$, recall$=0.999$, $F_1=0.995$.  Per-block F1 is $0.995$ for
+    both excitatory and inhibitory blocks.
+    \textbf{Top-centre:} edge-prediction confusion map on the $100\times100$ neuron
+    grid.  Green dots are true-positive edges, magenta are false positives, red are
+    false negatives, grey are true negatives.  The near-absence of magenta and red
+    confirms very few misclassified edges, with no systematic spatial pattern to
+    the errors.
+    \textbf{Top-right:} off-diagonal weight correlation scatter ($R=0.990$,
+    slope$=1.000$).  Each point is one inferred weight plotted against the
+    corresponding true weight.  Points cluster tightly along the identity line,
+    confirming that the model recovers both edge structure and weight magnitudes
+    without systematic bias.
+    \textbf{Bottom-left:} log-baseline bias scatter for state~0 ($R=0.999$, blue).
+    \textbf{Bottom-right:} log-baseline bias scatter for state~1 ($R=0.999$, red).
+    Both scatter plots show inferred $\hat{B}_{k,n}$ tightly concentrated on the
+    identity line against true $B_{k,n}^{\mathrm{true}}$, indicating accurate recovery
+    of the state-specific baseline excitability for each neuron in both states.}
+  \label{fig:k2_diagnostics}
 \end{figure}
 
 \FloatBarrier
+
+\subsection{State prediction}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k2_state_prediction.jpg}
+  \caption{\textbf{State prediction ($K=2$).}
+    \textbf{Top row, left:} mean state occupancy bar chart showing that the two
+    hidden states have approximately equal occupancy ($\approx 0.50$ each),
+    confirming that neither state collapsed to zero during training.
+    \textbf{Top row, centre:} per-state accuracy bar chart; both State~0 and State~1
+    are recovered with accuracy $\approx 0.99$.
+    \textbf{Top row, right:} confidence histogram showing the distribution of
+    $\max_k\gamma_{t,k}$ across all time bins.  The mass is strongly concentrated
+    near $1.0$, indicating that the model is highly confident in its state
+    assignments at almost every time step; overall accuracy $= 0.992$.
+    \textbf{Bottom:} state trace over 1000\,s.  The true hidden state (black)
+    alternates between State~0 and State~1 with dwell times of several seconds.
+    The inferred state (orange, $\arg\max_k \gamma_{t,k}$) tracks the true sequence
+    almost perfectly, with only rare brief disagreements at state boundaries.}
+  \label{fig:k2_state}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Training monitor}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k2_training_monitor.png}
+  \caption{\textbf{Training monitor ($K=2$).}
+    \textbf{Panel 1 -- E-step NLL:} the E-step negative log-likelihood per bin drops
+    steeply from $\approx 3.5\times10^7$ at EM iteration~0 to $\approx 1.0\times10^7$
+    by iteration~3, then flattens and converges smoothly over the remaining 22
+    iterations.  The rapid initial drop reflects the warm-start initialisation;
+    the flat tail confirms convergence.
+    \textbf{Panel 2 -- Spectral radius:} $\rho(A)$ begins at $\approx 4.0$ after
+    the warm start, then falls sharply within the first $\sim$100 M-step epochs as
+    spectral rescaling is applied every 3 epochs.  After epoch $\sim$100, $\rho(A)$
+    stabilises just below the dashed $\rho_{\max}=0.92$ threshold and remains there
+    for the rest of training, confirming that the spectral stability constraint is
+    enforced throughout.
+    \textbf{Panel 3 -- Connectivity support:} the number of nonzero off-diagonal
+    edges starts high ($\approx 7500$) from the dense warm-start, then decreases
+    rapidly as the proximal operator prunes weak edges.  A pronounced second drop
+    around epoch~500 corresponds to the cadence switch from $q_{\mathrm{early}}=8$
+    to $q_{\mathrm{late}}=2$, after which finer-grained pruning produces the final
+    sparse support of $\approx 4500$ edges.
+    \textbf{Panel 4 -- M-step NLL and L1 norm:} the Poisson NLL (blue, left axis)
+    and the L1 norm of off-diagonal weights (red dashed, right axis) both decrease and
+    converge over the 750 M-step epochs, confirming simultaneous data fitting and
+    sparsity enforcement.}
+  \label{fig:k2_training}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Weight and bias residuals}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k2_residuals.jpg}
+  \caption{\textbf{Edge and weight residuals ($K=2$).}
+    \textbf{Panel 1 -- $A_{\mathrm{off}}$ inhibitory residual:} histogram of
+    $\hat{A}_{ij} - A_{ij}^{\mathrm{true}}$ for inhibitory off-diagonal entries.
+    Centred near zero (median~$\approx -0.005$, std~$\approx 0.025$), with no heavy
+    tails, confirming accurate inhibitory weight recovery.
+    \textbf{Panel 2 -- $A_{\mathrm{off}}$ excitatory residual:} same for excitatory
+    off-diagonal entries.  Similarly centred (median~$\approx 0.002$,
+    std~$\approx 0.016$) and symmetric, confirming no systematic excitatory weight
+    deflation from the L2 regulariser.
+    \textbf{Panel 3 -- $A_{\mathrm{diag}}$ residual:} residuals for diagonal
+    (self-)weights, approximately symmetric around zero (median~$\approx 0.003$),
+    confirming accurate self-inhibition recovery.
+    \textbf{Panel 4 -- Edge accuracy bar chart:} counts of TP (1338), FP (13), and
+    FN (1) graphically confirm near-perfect edge classification.
+    \textbf{Panel 5 -- $B$ low-rate residual:} residuals for neurons with low
+    baseline rates ($B < 2.95$), tightly centred near zero.
+    \textbf{Panel 6 -- $B$ high-rate residual:} residuals for neurons with high
+    baseline rates ($B \ge 2.95$), also centred near zero, confirming that bias
+    recovery is accurate across the full dynamic range of baseline firing rates.}
+  \label{fig:k2_residuals}
+\end{figure}
+
+\FloatBarrier
+
+% ============================================================
+\section{Results: $K=3$ (\texttt{daleN100\_f7d754\_ce2202})}
+% ============================================================
+
+\subsection{Ground-truth vs.\ recovered connectivity}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k3_connectivity_matrix.jpg}
+  \caption{\textbf{Ground-truth vs.\ recovered connectivity matrix ($K=3$).}
+    Same layout as Figure~\ref{fig:k2_connectivity} for dataset
+    \texttt{daleN100\_f7d754\_ce2202}.  The ground-truth excitatory block
+    (rows~0--79) is sparser than in the $K=2$ dataset, with fewer strong positive
+    weights; the inhibitory block (rows~80--99) is again densely connected with strong
+    negative weights.  The recovered matrix (right) reproduces both support and weight
+    magnitudes with high fidelity.  Zero false negatives (FN$=0$) means every true
+    edge is detected; the nine false positives represent spurious edges of small
+    magnitude.  Edge-detection statistics: TP$=1358$, FP$=9$, FN$=0$,
+    $F_1=0.997$, $R=0.988$.  The sparser excitatory ground truth compared to the
+    $K=2$ case explains why excitatory F1 reaches $0.997$ here: fewer indirect
+    two-hop paths create confounding lag-1 correlations.}
+  \label{fig:k3_connectivity}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Connectivity diagnostics}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k3_diagnostics.jpg}
+  \caption{\textbf{Connectivity diagnostics ($K=3$).}
+    Same layout as Figure~\ref{fig:k2_diagnostics}.
+    \textbf{Top-left:} TP$=1358$; FP$=9$ and FN$=0$ are barely visible,
+    confirming near-perfect edge recovery.  Summary: precision$=0.993$,
+    recall$=1.000$, $F_1=0.997$.
+    \textbf{Top-centre:} confusion map showing an almost entirely green field of
+    true positives, with only a handful of magenta false-positive dots and no red
+    false-negative dots, reflecting the zero-FN result.
+    \textbf{Top-right:} weight correlation scatter ($R=0.988$, slope$=0.956$).
+    Points cluster tightly along a line of slope $0.956$, slightly below the
+    identity, indicating mild weight deflation consistent with the spectral
+    rescaler slightly undershooting true magnitudes.  This is the primary source
+    of imperfection in the $K=3$ run.
+    \textbf{Bottom row:} log-baseline bias scatter for all three states
+    (State~0 blue, State~1 red, State~2 green), each with $R=0.999$.  All three
+    scatter plots show tight concentration on the identity line, confirming that the
+    model correctly identifies the distinct baseline firing rate of each neuron across
+    all three brain states.}
+  \label{fig:k3_diagnostics}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{State prediction}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k3_state_prediction.jpg}
+  \caption{\textbf{State prediction ($K=3$).}
+    Same layout as Figure~\ref{fig:k2_state} extended to three states.
+    \textbf{Top row, left:} mean occupancy bar chart showing approximately equal
+    occupancy across all three states ($\approx 0.33$ each), confirming balanced
+    state usage with no collapsed states.
+    \textbf{Top row, centre:} per-state accuracy bar chart: State~0 $=0.99$,
+    State~1 $=0.98$, State~2 $=0.99$; overall accuracy $= 0.988$.
+    \textbf{Top row, right:} confidence histogram showing $\max_k\gamma_{t,k}$
+    strongly concentrated near $1.0$, indicating high-confidence state assignments
+    throughout.
+    \textbf{Bottom:} state trace over 1000\,s.  The true state sequence (black)
+    cycles among all three states with comparable dwell times.  The inferred sequence
+    (orange) tracks it closely, with occasional brief errors at state boundaries.
+    The three-level structure is clearly discriminated, demonstrating that the model
+    scales successfully to $K=3$ without state confusion or collapse.}
+  \label{fig:k3_state}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Training monitor}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k3_training_monitor.png}
+  \caption{\textbf{Training monitor ($K=3$).}
+    Same four-panel layout as Figure~\ref{fig:k2_training}.
+    \textbf{Panel 1 -- E-step NLL:} drops from $\approx 3.0\times10^7$ at
+    iteration~0 to $\approx 1.0\times10^7$ within the first 3 iterations, then
+    converges smoothly, mirroring the $K=2$ behaviour.
+    \textbf{Panel 2 -- Spectral radius:} $\rho(A)$ begins at $\approx 3.5$, falls
+    to below $\rho_{\max}=0.92$ by epoch $\sim$100, and remains stable thereafter.
+    The convergence trajectory is essentially identical to the $K=2$ case, confirming
+    that the spectral constraint operates the same way regardless of the number of
+    states.
+    \textbf{Panel 3 -- Connectivity support:} nonzero edge count decreases from
+    $\approx 7500$ to $\approx 4500$ with the same two-phase pattern as $K=2$,
+    as the underlying network architecture and sparsity level are the same across
+    datasets.
+    \textbf{Panel 4 -- M-step NLL and L1 norm:} both quantities decrease and
+    stabilise over 750 M-step epochs.  The L1 norm stabilises at a slightly higher
+    value than in the $K=2$ run, consistent with the $K=3$ dataset having more
+    true edges in total across all blocks.}
+  \label{fig:k3_training}
+\end{figure}
+
+\FloatBarrier
+
+\subsection{Weight and bias residuals}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\textwidth]{figures/k3_residuals.jpg}
+  \caption{\textbf{Edge and weight residuals ($K=3$).}
+    Same six-panel layout as Figure~\ref{fig:k2_residuals}.
+    \textbf{Panel 1 -- $A_{\mathrm{off}}$ inhibitory residual:} centred near zero
+    (median~$\approx -0.016$, std~$\approx 0.019$), comparable to the $K=2$ result.
+    \textbf{Panel 2 -- $A_{\mathrm{off}}$ excitatory residual:} distribution slightly
+    shifted negative (median~$\approx -0.003$, std~$\approx 0.014$), reflecting the
+    mild slope$<1$ weight deflation also visible in the weight scatter.
+    \textbf{Panel 3 -- $A_{\mathrm{diag}}$ residual:} centred near zero
+    (median~$\approx 0.004$), confirming accurate diagonal recovery.
+    \textbf{Panel 4 -- Edge accuracy bar chart:} TP$=1358$, FP$=9$, FN$=0$ ---
+    the perfect-recall result is clearly visible as the absence of any FN bar.
+    \textbf{Panels 5--6 -- $B$ residuals:} low-rate and high-rate bias residuals
+    are both tightly distributed around zero (std $<0.04$), confirming accurate
+    bias recovery across all three states and the full range of baseline firing rates.}
+  \label{fig:k3_residuals}
+\end{figure}
+
+\FloatBarrier
+
 % ============================================================
 \section{Hyperparameter Reference}
 % ============================================================
 
 \small
-\begin{longtable}{>{\raggedright\arraybackslash}p{0.18\textwidth}
-                  >{\raggedright\arraybackslash}p{0.12\textwidth}
-                  >{\raggedright\arraybackslash}p{0.28\textwidth}
-                  >{\raggedright\arraybackslash}p{0.34\textwidth}}
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.20\textwidth}
+                  >{\raggedright\arraybackslash}p{0.14\textwidth}
+                  >{\raggedright\arraybackslash}p{0.58\textwidth}}
 \toprule
-Name & Value & Role & Where used \\
+Name & Value & Role \\
 \midrule
 \endhead
 
-\multicolumn{4}{l}{\textit{Sparsity (swept)}} \\[2pt]
-$\lambda_1$ (\texttt{l1}) & $10^{-3}$ (best) & Base L1 strength; scales the initial proximal thresholds $\tau_0$ for both blocks. & $\tau_0 = \lambda_1\cdot\alpha_{\mathrm{prox}}$ \\
-$\lambda_2$ (\texttt{l2}) & $10^{-4}$ (best) & L2 weight decay; keeps weights bounded and aids numerical stability. & $\frac{\lambda_2}{2}\|A\|_F^2$ in loss \\
+\multicolumn{3}{l}{\textit{Sparsity (swept)}} \\[2pt]
+$\lambda_1$ (\texttt{l1}) & $10^{-3}$ (best) & Base L1 strength; scales the initial proximal thresholds $\tau_0$ for both blocks. \\
+$\lambda_2$ (\texttt{l2}) & $10^{-4}$ (best) & L2 weight decay; keeps weights bounded and aids numerical stability. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{EM schedule}} \\[2pt]
-\texttt{em\_iters} & 25 & Number of EM outer iterations. & E/M alternation count \\
-\texttt{m\_epochs} & 30 & Adam epochs per EM round. & Inner optimisation depth \\
+\multicolumn{3}{l}{\textit{EM schedule}} \\[2pt]
+\texttt{em\_iters} & 25 & Number of EM outer iterations. \\
+\texttt{m\_epochs} & 30 & Adam epochs per EM round. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{Optimiser}} \\[2pt]
-\texttt{lr} & $5\times10^{-3}$ & Adam learning rate. & Adam updates \\
-\texttt{batch\_size} & 2048 & Minibatch size for stochastic gradient estimation. & Training loop \\
-\texttt{grad\_clip} & 1.0 & Gradient norm clipping threshold. & $\|\nabla\|\le 1$ \\
+\multicolumn{3}{l}{\textit{Optimiser}} \\[2pt]
+\texttt{lr} & $5\times10^{-3}$ & Adam learning rate. \\
+\texttt{batch\_size} & 2048 & Minibatch size for stochastic gradient estimation. \\
+\texttt{grad\_clip} & 1.0 & Gradient norm clipping threshold. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{Proximal / sparsity controller}} \\[2pt]
-\texttt{prox\_scale} $(\alpha_{\mathrm{prox}})$ & $5\times10^{-3}$ & Multiplier converting $\lambda_1$ to the initial proximal threshold. & $\tau_0 = \lambda_1\cdot\alpha_{\mathrm{prox}}$ \\
-\texttt{tau\_adapt\_start\_frac} & 0.25 & Fraction of total Phase 1 epochs before tau adaptation begins (warm-up). & Adaptive controller on/off \\
-\texttt{tau\_gain} $(g_\tau)$ & 0.05 & Multiplicative gain for FP/FN feedback in tau update. & $\tau\leftarrow\tau\exp(g_\tau e)$ \\
-\texttt{tau\_min\_mult} & 0.2 & Lower clamp: $\tau_{\min}=0.2\,\tau_0$. & Adaptive controller bounds \\
-\texttt{tau\_max\_mult} & 6.0 & Upper clamp: $\tau_{\max}=6.0\,\tau_0$. & Adaptive controller bounds \\
-\texttt{proj\_every\_early} & 8 & Proximal+Dale projection applied every $n$ epochs (early training). & Projection cadence \\
-\texttt{proj\_every\_late} & 2 & Proximal+Dale projection applied every $n$ epochs (late training). & Projection cadence \\
-\texttt{proj\_switch\_frac} & 0.65 & Fraction of Phase 1 epochs at which cadence switches from early to late. & Cadence switch \\
+\multicolumn{3}{l}{\textit{Proximal / adaptive $\tau$ controller}} \\[2pt]
+\texttt{prox\_scale} $(\alpha_{\mathrm{prox}})$ & $5\times10^{-3}$ & Multiplier converting $\lambda_1$ to the initial proximal threshold $\tau_0$. \\
+\texttt{tau\_adapt\_start\_frac} & 0.25 & Fraction of total Phase~1 epochs before tau adaptation begins (warm-up). \\
+\texttt{tau\_gain} $(g_\tau)$ & 0.05 & Multiplicative gain for FP/FN feedback in tau update. \\
+\texttt{tau\_min\_mult} & 0.2 & Lower clamp: $\tau_{\min}=0.2\,\tau_0$. \\
+\texttt{tau\_max\_mult} & 6.0 & Upper clamp: $\tau_{\max}=6.0\,\tau_0$. \\
+\texttt{proj\_every\_early} & 8 & Proximal+Dale projection applied every $n$ epochs (early training). \\
+\texttt{proj\_every\_late} & 2 & Proximal+Dale projection applied every $n$ epochs (late training). \\
+\texttt{proj\_switch\_frac} & 0.65 & Fraction of Phase~1 epochs at which cadence switches from early to late. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{Structural constraints}} \\[2pt]
-\texttt{diag\_inhibitory\_floor} $(d_{\min})$ & 0.05 & Minimum magnitude of self-inhibition on the diagonal. & $A_{ii}\leftarrow-\max(|A_{ii}|,d_{\min})$ \\
-spectral $\rho_{\max}$ & 0.92 & Spectral radius threshold above which $A$ is rescaled. & Rescaling trigger \\
-spectral $\rho_{\mathrm{target}}$ (training) & 0.90 & Target spectral radius during Phase 1/2 training rescaling. & $A\leftarrow A\cdot0.90/\rho$ \\
-spectral cadence & every 3 epochs & How often spectral rescaling is applied during training. & Decoupled from proximal cadence \\
-spectral $\rho_{\mathrm{target}}$ (final) & 0.919 & Target for the single post-training spectral stabilisation. & Final cleanup \\
+\multicolumn{3}{l}{\textit{Structural constraints}} \\[2pt]
+\texttt{diag\_inhibitory\_floor} $(d_{\min})$ & 0.05 & Minimum magnitude of self-inhibition on the diagonal. \\
+spectral $\rho_{\max}$ & 0.92 & Spectral radius threshold above which $A$ is rescaled. \\
+spectral $\rho_{\mathrm{target}}$ (training) & 0.90 & Target spectral radius during training rescaling. \\
+spectral cadence & every 3 epochs & How often spectral rescaling is applied during training. \\
+spectral $\rho_{\mathrm{target}}$ (final) & 0.919 & Target for the single post-training spectral stabilisation step. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{Warm start}} \\[2pt]
-\texttt{warm\_ridge} $(\lambda_{\mathrm{ridge}})$ & $10^{-2}$ & Ridge regulariser in the warm-start linear solve. & $(X^\top X+\lambda_{\mathrm{ridge}} I)^{-1}X^\top Y$ \\
-\texttt{warm\_keep\_ratio} $(r_{\mathrm{keep}})$ & 0.15 & Fraction of off-diagonal entries retained after warm-start thresholding. & Quantile keep rule \\
-\texttt{b\_init\_noise} $(\sigma_B)$ & 0.05 & Std of Gaussian noise added to bias warm start to break state symmetry. & $B_{k,n}\leftarrow\bar B_n+\varepsilon$ \\
+\multicolumn{3}{l}{\textit{Warm start}} \\[2pt]
+\texttt{warm\_ridge} $(\lambda_{\mathrm{ridge}})$ & $10^{-2}$ & Ridge regulariser in the warm-start linear solve. \\
+\texttt{warm\_keep\_ratio} $(r_{\mathrm{keep}})$ & 0.15 & Fraction of off-diagonal entries retained after warm-start thresholding. \\
+\texttt{b\_init\_noise} $(\sigma_B)$ & 0.05 & Std of Gaussian noise added to bias warm start to break state symmetry. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{HMM priors}} \\[2pt]
-\texttt{pi\_pseudocount} $(\alpha_\pi)$ & $10^{-2}$ & Additive smoothing on initial state distribution. & $\pi$ update \\
-\texttt{P\_pseudocount} $(\epsilon_P)$ & $10^{-3}$ & Additive smoothing on transition counts. & $P$ update \\
-\texttt{delta\_t} $(\Delta t)$ & 0.01 & Time bin width in seconds. & $\mu=\exp(\eta)\Delta t$ \\
+\multicolumn{3}{l}{\textit{HMM priors}} \\[2pt]
+\texttt{pi\_pseudocount} $(\alpha_\pi)$ & $10^{-2}$ & Additive smoothing on initial state distribution. \\
+\texttt{P\_pseudocount} $(\epsilon_P)$ & $10^{-3}$ & Additive smoothing on transition counts. \\
+\texttt{delta\_t} $(\Delta t)$ & 0.01 & Time bin width in seconds. \\
 \midrule
 
-\multicolumn{4}{l}{\textit{Architectural}} \\[2pt]
-\texttt{n\_lags} $(L)$ & 1 & Number of lagged time steps in the design matrix. & $X_t=[Y_{t-1},\ldots,Y_{t-L}]$ \\
-$N$ & 100 & Total number of neurons. & Fixed by dataset \\
-$K$ & 2 (ns8) / 3 (ns9) & Number of hidden states. & Fixed by dataset \\
-$\mathrm{exc\_ratio}$ & 0.8 & Fraction of neurons treated as excitatory. & $n_{\mathrm{exc}}=\lfloor 0.8N\rfloor$ \\
+\multicolumn{3}{l}{\textit{Architectural}} \\[2pt]
+\texttt{n\_lags} $(L)$ & 1 & Number of lagged time steps in the design matrix. \\
+$N$ & 100 & Total number of neurons. \\
+$K$ & 2 or 3 & Number of hidden states (dataset-dependent). \\
+$\mathrm{exc\_ratio}$ & 0.8 & Fraction of neurons treated as excitatory; $n_{\mathrm{exc}}=\lfloor 0.8N\rfloor = 80$. \\
+$T$ & 200{,}000 & Time bins per dataset. \\
 \bottomrule
 \end{longtable}
 \normalsize
@@ -669,13 +797,12 @@ Parameter & Values swept \\
 \midrule
 $\lambda_1$ & $\{10^{-3},3\times10^{-3},10^{-2},3\times10^{-2},10^{-1}\}$ \\
 $\lambda_2$ & $\{10^{-4},3\times10^{-4},10^{-3},3\times10^{-3},10^{-2}\}$ \\
-\texttt{n\_lags} & $\{1,2\}$ (L=2 tested; reverted: FP dropped but FN rose, net F1 unchanged) \\
+\texttt{n\_lags} & $\{1,2\}$ ($L=2$ tested; reverted: FP dropped but FN rose, net F1 unchanged) \\
 \texttt{tau\_gain} & $\{0.05, 0.06, 0.10\}$ (0.10 caused oscillation; 0.05 in use) \\
 \texttt{tau\_max\_mult} & $\{5.0, 6.0, 10.0\}$ (10.0 caused limit cycle; 6.0 in use) \\
 \texttt{proj\_every\_late} & $\{1, 2, 3\}$ (1 caused oscillation; 2 in use) \\
-spectral cadence & $\{$every epoch, every 3 epochs$\}$ (every epoch caused weight deflation and state collapse) \\
-spectral target & $\{0.919, 0.90\}$ (0.919 gave insufficient weight-growth buffer; 0.90 stable) \\
-\texttt{lambda\_path} & $\{0.1, 0.5\}$ (two-hop path penalty; no F1 improvement) \\
+spectral cadence & \{every epoch, every 3 epochs\} (every epoch caused weight deflation) \\
+spectral target & $\{0.919, 0.90\}$ (0.919 gave insufficient weight-growth buffer) \\
 \bottomrule
 \end{tabular}
 
@@ -683,39 +810,21 @@ spectral target & $\{0.919, 0.90\}$ (0.919 gave insufficient weight-growth buffe
 \section{Known Limitations}
 % ============================================================
 
-\paragraph{Excitatory block ceiling (K=2).}
+\paragraph{Excitatory block ceiling ($K=2$).}
 With lag-1 features, indirect excitatory paths $i\!\to\!k\!\to\!j$ produce
 same-sign, similar-magnitude lag-1 correlations as direct connections $i\!\to\!j$.
 Dale's law eliminates inhibitory confounders but not excitatory ones.  All post-hoc
 correction methods tried (network deconvolution, two-hop subtraction, path penalty)
 were unable to break this degeneracy.  The F1 ceiling for the excitatory block
-appears to be $\approx0.80$ on the K=2 dataset with the current architecture.
-The K=3 dataset (\texttt{daleN100\_f7d754\_ce2202}) has a sparser excitatory ground truth
-(fewer true edges $\Rightarrow$ fewer indirect two-hop paths), which explains the substantially
-higher excitatory F1 of 0.997.
+appears to be $\approx0.80$ on datasets with denser excitatory ground truth.
+The $K=3$ dataset has a sparser excitatory ground truth (fewer true edges, hence fewer
+indirect two-hop paths), which explains the substantially higher excitatory F1 of $0.997$.
 
-\paragraph{Weight calibration (B).}
-The log-baseline bias vectors $B_k$ are recovered with $R \ge 0.998$ per state for
-K=2 and $R = 0.999$ per state for K=3.  However, the scatter plots show a systematic offset: the inferred
+\paragraph{Weight calibration ($B$).}
+The log-baseline bias vectors $B_k$ are recovered with $R \ge 0.999$ per state for
+both $K=2$ and $K=3$.  However, the scatter plots show a systematic offset: inferred
 values lie slightly below the true values, consistent with the L2 regulariser
 shrinking the biases toward zero.  This matters for control applications where the
 absolute baseline rate of each neuron is needed.
-
-\paragraph{Potential paths forward.}
-\begin{enumerate}[leftmargin=*]
-  \item \textbf{More data.} Direct connections have marginally higher SNR than
-        indirect paths; a larger $T$ may open the gap for the K=2 case.
-  \item \textbf{Multi-lag features ($L=2$).} Lag-2 regressors give the model an
-        explicit alternative explanation for two-hop correlations.  Tested ($L=2$):
-        FP dropped but FN rose proportionally; net F1 unchanged.
-        Revisit with stronger lag-2 regularisation.
-  \item \textbf{Weight refinement.} Once the support is locked, run additional
-        EM iterations with no L1 proximal operator and no
-        spectral rescaling (support frozen via hard mask).  This eliminates both
-        shrinkage bias sources and should drive the weight correlation slope toward
-        1.0.
-  \item \textbf{Interventional data.} Single-neuron optogenetic stimulation breaks
-        the indirect-path confound entirely.
-\end{enumerate}
 
 \end{document}

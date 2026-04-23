@@ -70,7 +70,7 @@ jointly learns the sparse connectivity structure and the HMM parameters over
 The model has been evaluated on two simulated 100-neuron networks:
 
 \paragraph{K=2 (two brain states, \texttt{daleN100\_b1036a}).}
-$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx10{,}000$ bins, $\Delta t=0.1$\,s.
+$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx10{,}000$ bins, $\Delta t=0.01$\,s.
 \begin{itemize}[leftmargin=*,noitemsep]
   \item F1 $= 0.841$ ($\mathrm{TP}=1195$, $\mathrm{FP}=271$, $\mathrm{FN}=181$).
   \item Inhibitory block: F1 $= 0.998$.  Excitatory block: F1 $= 0.802$.
@@ -78,7 +78,7 @@ $N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx10{,}000$ bins, $\Delta t
 \end{itemize}
 
 \paragraph{K=3 (three brain states, \texttt{daleN100\_f7d754\_ce2202}).}
-$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx20{,}000$ bins, $\Delta t=0.1$\,s.
+$N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx20{,}000$ bins, $\Delta t=0.01$\,s.
 \begin{itemize}[leftmargin=*,noitemsep]
   \item F1 $= 0.997$ ($\mathrm{TP}=1358$, $\mathrm{FP}=9$, $\mathrm{FN}=0$).
   \item Inhibitory block: F1 $= 0.994$.  Excitatory block: F1 $= 0.997$.
@@ -93,7 +93,7 @@ $N_{\mathrm{exc}}=80$, $N_{\mathrm{inh}}=20$, $T\approx20{,}000$ bins, $\Delta t
 \begin{equation}
   Y\in\mathbb{R}_{\ge 0}^{T\times N},\qquad N=100.
 \end{equation}
-$Y_{t,n}$ is the spike count of neuron $n$ in time bin $t$.  Bins are $\Delta t = 0.1$\,s wide.
+$Y_{t,n}$ is the spike count of neuron $n$ in time bin $t$.  Bins are $\Delta t = 0.01$\,s wide.
 $K$ is the number of hidden brain states; $K=2$ for dataset \texttt{daleN100\_b1036a}
 and $K=3$ for \texttt{daleN100\_15b40d\_0e5b13}.
 
@@ -408,7 +408,7 @@ support cleanup is beneficial.
 
 \begin{equation}
   q = \begin{cases} q_{\mathrm{early}} = 8 & \text{if } \mathrm{progress} < 65\%,\\
-                    q_{\mathrm{late}} = 3  & \text{otherwise.} \end{cases}
+                    q_{\mathrm{late}} = 2  & \text{otherwise.} \end{cases}
 \end{equation}
 Proximal and Dale projections are applied every $q$ epochs.
 Spectral rescaling uses a separate fixed cadence of every 3 epochs throughout.
@@ -423,7 +423,7 @@ small, noise edges survive (high FP).  An online feedback controller that increa
 $\tau$ when FP~$>$~FN and decreases it when FN~$>$~FP maintains the balance
 automatically without requiring per-dataset manual tuning.
 
-After the first $40\%$ of Phase 1 epochs (warm-up period while the weight
+After the first $25\%$ of Phase 1 epochs (warm-up period while the weight
 distribution is still changing rapidly):
 \begin{equation}
   e_{\mathrm{block}} = \frac{FP_{\mathrm{block}}-FN_{\mathrm{block}}}
@@ -433,8 +433,8 @@ distribution is still changing rapidly):
   \tau_{\mathrm{block}} \leftarrow \tau_{\mathrm{block}}\cdot
     \exp\!\bigl(g_\tau\cdot e_{\mathrm{block}}\bigr),
 \end{equation}
-where $g_\tau=0.06$.  Thresholds are clamped to
-$[\tau_{\min},\tau_{\max}] = [0.2\,\tau_0,\;5.0\,\tau_0]$,
+where $g_\tau=0.05$.  Thresholds are clamped to
+$[\tau_{\min},\tau_{\max}] = [0.2\,\tau_0,\;6.0\,\tau_0]$,
 where $\tau_0=\lambda_1\cdot\alpha_{\mathrm{prox}}$ is the initial threshold.
 
 \paragraph{Why a multiplicative (not additive) update.}
@@ -623,12 +623,12 @@ $\lambda_2$ (\texttt{l2}) & $10^{-4}$ (best) & L2 weight decay; keeps weights bo
 
 \multicolumn{4}{l}{\textit{Proximal / sparsity controller}} \\[2pt]
 \texttt{prox\_scale} $(\alpha_{\mathrm{prox}})$ & $5\times10^{-3}$ & Multiplier converting $\lambda_1$ to the initial proximal threshold. & $\tau_0 = \lambda_1\cdot\alpha_{\mathrm{prox}}$ \\
-\texttt{tau\_adapt\_start\_frac} & 0.40 & Fraction of total Phase 1 epochs before tau adaptation begins (warm-up). & Adaptive controller on/off \\
-\texttt{tau\_gain} $(g_\tau)$ & 0.06 & Multiplicative gain for FP/FN feedback in tau update. & $\tau\leftarrow\tau\exp(g_\tau e)$ \\
+\texttt{tau\_adapt\_start\_frac} & 0.25 & Fraction of total Phase 1 epochs before tau adaptation begins (warm-up). & Adaptive controller on/off \\
+\texttt{tau\_gain} $(g_\tau)$ & 0.05 & Multiplicative gain for FP/FN feedback in tau update. & $\tau\leftarrow\tau\exp(g_\tau e)$ \\
 \texttt{tau\_min\_mult} & 0.2 & Lower clamp: $\tau_{\min}=0.2\,\tau_0$. & Adaptive controller bounds \\
-\texttt{tau\_max\_mult} & 5.0 & Upper clamp: $\tau_{\max}=5.0\,\tau_0$. & Adaptive controller bounds \\
+\texttt{tau\_max\_mult} & 6.0 & Upper clamp: $\tau_{\max}=6.0\,\tau_0$. & Adaptive controller bounds \\
 \texttt{proj\_every\_early} & 8 & Proximal+Dale projection applied every $n$ epochs (early training). & Projection cadence \\
-\texttt{proj\_every\_late} & 3 & Proximal+Dale projection applied every $n$ epochs (late training). & Projection cadence \\
+\texttt{proj\_every\_late} & 2 & Proximal+Dale projection applied every $n$ epochs (late training). & Projection cadence \\
 \texttt{proj\_switch\_frac} & 0.65 & Fraction of Phase 1 epochs at which cadence switches from early to late. & Cadence switch \\
 \midrule
 
@@ -649,7 +649,7 @@ spectral $\rho_{\mathrm{target}}$ (final) & 0.919 & Target for the single post-t
 \multicolumn{4}{l}{\textit{HMM priors}} \\[2pt]
 \texttt{pi\_pseudocount} $(\alpha_\pi)$ & $10^{-2}$ & Additive smoothing on initial state distribution. & $\pi$ update \\
 \texttt{P\_pseudocount} $(\epsilon_P)$ & $10^{-3}$ & Additive smoothing on transition counts. & $P$ update \\
-\texttt{delta\_t} $(\Delta t)$ & 0.1 & Time bin width in seconds. & $\mu=\exp(\eta)\Delta t$ \\
+\texttt{delta\_t} $(\Delta t)$ & 0.01 & Time bin width in seconds. & $\mu=\exp(\eta)\Delta t$ \\
 \midrule
 
 \multicolumn{4}{l}{\textit{Architectural}} \\[2pt]
@@ -670,9 +670,9 @@ Parameter & Values swept \\
 $\lambda_1$ & $\{10^{-3},3\times10^{-3},10^{-2},3\times10^{-2},10^{-1}\}$ \\
 $\lambda_2$ & $\{10^{-4},3\times10^{-4},10^{-3},3\times10^{-3},10^{-2}\}$ \\
 \texttt{n\_lags} & $\{1,2\}$ (L=2 tested; reverted: FP dropped but FN rose, net F1 unchanged) \\
-\texttt{tau\_gain} & $\{0.05, 0.06, 0.10\}$ (0.10 caused oscillation; 0.06 stable) \\
-\texttt{tau\_max\_mult} & $\{5.0, 6.0, 10.0\}$ (10.0 caused limit cycle; 5.0 stable) \\
-\texttt{proj\_every\_late} & $\{1, 2, 3\}$ (1 caused oscillation; 3 stable) \\
+\texttt{tau\_gain} & $\{0.05, 0.06, 0.10\}$ (0.10 caused oscillation; 0.05 in use) \\
+\texttt{tau\_max\_mult} & $\{5.0, 6.0, 10.0\}$ (10.0 caused limit cycle; 6.0 in use) \\
+\texttt{proj\_every\_late} & $\{1, 2, 3\}$ (1 caused oscillation; 2 in use) \\
 spectral cadence & $\{$every epoch, every 3 epochs$\}$ (every epoch caused weight deflation and state collapse) \\
 spectral target & $\{0.919, 0.90\}$ (0.919 gave insufficient weight-growth buffer; 0.90 stable) \\
 \texttt{lambda\_path} & $\{0.1, 0.5\}$ (two-hop path penalty; no F1 improvement) \\

@@ -605,12 +605,12 @@ def main():
         processes.append(p)
 
 
+    for p in processes:
+        p.join()
+
     results = []
     while not result_queue.empty():
         results.append(result_queue.get())
-
-    for p in processes:
-        p.join()
 
     if not results:
         raise RuntimeError("No results collected from GPU workers.")
